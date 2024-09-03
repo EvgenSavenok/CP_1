@@ -1,61 +1,67 @@
 ﻿#include <windows.h>
 
-// Функция обработки сообщений окна
-LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    switch (msg) {
+LRESULT CALLBACK WndProc(HWND hwnd/*дескриптор окна*/, UINT uMsg/*идентификатор 
+    сообщения*/, WPARAM wParam, LPARAM lParam)
+{
+    switch (uMsg) 
+    {
     case WM_CLOSE:
         DestroyWindow(hwnd);
         break;
-    case WM_DESTROY:
-        PostQuitMessage(0);
+    case WM_DESTROY://after disappearing of window, but before destroying queue
+        PostQuitMessage(0);//for breaking queue (puts WM_QUIT mes to the queue)
         break;
     default:
-        return DefWindowProc(hwnd, msg, wParam, lParam);
+        return DefWindowProc(hwnd, uMsg, wParam, lParam);
     }
     return 0;
 }
 
-int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLine, int nCmdShow) {
-    const wchar_t className[] = L"MyWindowClass"; // Используем широкую строку
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLine, 
+    int nCmdShow)
+{
+    const wchar_t className[] = L"MyWindowClass"; 
 
-    // Определение класса окна
-    WNDCLASSW wc = { 0 }; // WNDCLASSW для Unicode
+    WNDCLASSW wc = { 0 }; 
     wc.lpfnWndProc = WndProc;
     wc.hInstance = hInstance;
-    wc.lpszClassName = className;
+    wc.lpszClassName = className; //defines the window's class name
     wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
     wc.hCursor = LoadCursor(NULL, IDC_ARROW);
 
-    // Регистрация класса окна
-    if (!RegisterClassW(&wc)) { // RegisterClassW для Unicode
-        MessageBoxW(NULL, L"Failed to register window class", L"Error", MB_OK | MB_ICONERROR);
+    if (!RegisterClassW(&wc)/*because zero is returned when error appear*/)
+    { 
+        MessageBoxW(NULL, L"Failed to register window class", L"Error", 
+            MB_OK | MB_ICONERROR);
         return 0;
     }
 
-    // Создание окна
-    HWND hwnd = CreateWindowW(
+    HWND hwnd = CreateWindowEx(
+        0,
         className,
-        L"My Window", // Используем широкую строку
+        L"Lab_1",
         WS_OVERLAPPEDWINDOW,
-        CW_USEDEFAULT, CW_USEDEFAULT, 800, 600,
+        CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
         NULL, NULL, hInstance, NULL
     );
 
-    if (hwnd == NULL) {
+    if (hwnd == NULL) 
+    {
         MessageBoxW(NULL, L"Failed to create window", L"Error", MB_OK | MB_ICONERROR);
         return 0;
     }
 
-    // Показать окно
     ShowWindow(hwnd, nCmdShow);
     UpdateWindow(hwnd);
 
-    // Цикл обработки сообщений
     MSG msg;
-    while (GetMessage(&msg, NULL, 0, 0) > 0) {
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
-    }
+    while (GetMessage(&msg, NULL, 0, 0) > 0)
+    {
+        GetMessage(&msg/*if success then
+        message writes there*/, NULL, 0, 0);//take first mes from the head of the queue
+        TranslateMessage(&msg);//translate keystrokes into characters
+        DispatchMessage(&msg);//calls window procedure of window by window's handle
+    }                          //after calling's ending my function returns to this place
 
     return (int)msg.wParam;
 }
