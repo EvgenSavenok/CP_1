@@ -8,16 +8,13 @@
 #define IDC_EDIT 1
 #define IDC_SEARCHBTN 2
 #define IDC_LABEL 3
-
-COLORREF backgroundColor = RGB(255, 255, 255);
+#define ID_LISTVIEW 1001
 
 BOOL RegisterWindowClass(HINSTANCE hInstance, const wchar_t* className);
 HWND CreateAppWindow(HINSTANCE hInstance, const wchar_t* className, int nCmdShow);
 
 HWND CreateTable(HWND hwndParent);
 HWND CreateStartBtn(HWND hwndParent);
-HWND CreateEditBox(HWND hwndParent);
-HWND CreateResultLabel(HWND hwndParent);
 
 int RunMessageLoop();
 
@@ -58,12 +55,17 @@ HWND CreateAppWindow(HINSTANCE hInstance, const wchar_t* className, int nCmdShow
 
 HWND CreateStartBtn(HWND hwndParent)
 {
+    RECT rcClient;
+    GetClientRect(hwndParent, &rcClient);
+
+    const int WINDOW_WIDTH = rcClient.right - rcClient.left;
+
      HWND hwndButton = CreateWindowEx(
         0,              
         L"BUTTON",      
         L"Sort",  
         WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,  
-        500, 500, 60, 30,             
+         WINDOW_WIDTH - 120, 500, 60, 30,
         hwndParent,     
         (HMENU)IDC_SEARCHBTN,       
         (HINSTANCE)GetWindowLongPtr(hwndParent, GWLP_HINSTANCE), 
@@ -72,52 +74,37 @@ HWND CreateStartBtn(HWND hwndParent)
      return hwndButton;
 }
 
-HWND CreateResulLabel(HWND hwndParent)
+HWND AllocateTableMemory(HWND hwndListView, const int WINDOW_WIDTH)
 {
-    RECT rcClient;
-    GetClientRect(hwndParent, &rcClient);
+    for (int i = 0; i < 2; ++i)
+    {
+        LVCOLUMN lvc;
+        ZeroMemory(&lvc, sizeof(LVCOLUMN));
+        lvc.mask = LVCF_TEXT | LVCF_WIDTH;
+        lvc.cx = WINDOW_WIDTH / 2;      
+        ListView_InsertColumn(hwndListView, i, &lvc);  
+    }
 
-    const int WINDOW_WIDTH = rcClient.right - rcClient.left;
+    std::vector<std::vector<std::wstring>> rows = {
+        { L"Directory", L"Result" }
+    };
 
-    HWND hwndLabel = CreateWindowEx(
-        0,                  
-        L"STATIC",           
-        L"Result",  
-        WS_CHILD | WS_VISIBLE | SS_CENTER | WS_BORDER,
-        WINDOW_WIDTH / 2,
-        0,                 
-        WINDOW_WIDTH / 2,
-        20,                 
-        hwndParent,               
-        (HMENU)IDC_LABEL,   
-        (HINSTANCE)GetWindowLongPtr(hwndParent, GWLP_HINSTANCE), 
-        NULL                
-    );
-    return hwndLabel;
-}
+    for (int i = 0; i < rows.size(); ++i)
+    {
+        LVITEM lvItem;
+        ZeroMemory(&lvItem, sizeof(LVITEM));
 
-HWND CreateEditBox(HWND hwndParent)
-{
-    RECT rcClient;
-    GetClientRect(hwndParent, &rcClient);
+        lvItem.mask = LVIF_TEXT;
+        lvItem.iItem = i; 
+        lvItem.iSubItem = 0; 
 
-    const int WINDOW_WIDTH = rcClient.right - rcClient.left;
+        lvItem.pszText = const_cast<LPWSTR>(rows[i][0].c_str());
+        ListView_InsertItem(hwndListView, &lvItem);
 
-    HWND hwndEdit = CreateWindowEx(
-        0,                  
-        L"EDIT",            
-        L"Directory",               
-        WS_CHILD | WS_VISIBLE | WS_BORDER | ES_CENTER, 
-        0,                
-        0,                 
-        WINDOW_WIDTH / 2,
-        20,                 
-        hwndParent,         
-        (HMENU)IDC_EDIT,    
-        (HINSTANCE)GetWindowLongPtr(hwndParent, GWLP_HINSTANCE),
-        NULL               
-    );
-    return hwndEdit;
+        ListView_SetItemText(hwndListView, i, 1, const_cast<LPWSTR>(rows[i][1].c_str()));
+    }
+
+    return hwndListView;
 }
 
 HWND CreateTable(HWND hwndParent)
@@ -126,7 +113,6 @@ HWND CreateTable(HWND hwndParent)
     GetClientRect(hwndParent, &rcClient);
 
     const int WINDOW_WIDTH = rcClient.right - rcClient.left;
-    const int NUM_OF_COLS = 6;
 
     INITCOMMONCONTROLSEX icex;
     icex.dwSize = sizeof(icex);
@@ -136,64 +122,21 @@ HWND CreateTable(HWND hwndParent)
     int tableWidth = WINDOW_WIDTH;
     int tableHeight = 200; 
     int xPos = 0; 
-    int yPos = 20; 
+    int yPos = 0; 
 
     HWND hwndListView = CreateWindowEx(
         0,
         WC_LISTVIEW,
         NULL,
-        WS_CHILD | WS_VISIBLE | LVS_REPORT,
+        WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_EDITLABELS | LVS_NOCOLUMNHEADER,
         xPos, yPos, tableWidth, tableHeight,
         hwndParent,
-        NULL,
+        (HMENU)ID_LISTVIEW,
         (HINSTANCE)GetWindowLongPtr(hwndParent, GWLP_HINSTANCE),
         NULL
     );
 
-    LVCOLUMN lvc;
-    lvc.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_SUBITEM;
-    lvc.cx = (WINDOW_WIDTH) / NUM_OF_COLS;
-
-    std::wstring wstr1 = L"Num";
-    std::wstring wstr2 = L"Directory";
-    std::wstring wstr3 = L"Dynamic Column 3";
-    std::wstring wstr4 = L"Num";
-    std::wstring wstr5 = L"Dynamic Column 5";
-    std::wstring wstr6 = L"Dynamic Column 6";
-
-    std::vector<std::wstring> columns = { wstr1, wstr2, wstr3, wstr4, wstr5, wstr6 };
-
-    for (int i = 0; i < columns.size(); ++i)
-    {
-        LVCOLUMN lvc;
-        ZeroMemory(&lvc, sizeof(LVCOLUMN)); // Инициализация структуры нулями
-
-        lvc.mask = LVCF_TEXT | LVCF_WIDTH; // Указываем, что устанавливаем текст и ширину
-        lvc.cx = 100; // Ширина столбца (можете настроить по своему)
-
-        // Выделяем память для текстовой строки
-        LPWSTR lpwstr = new wchar_t[columns[i].size() + 1];
-        std::copy(columns[i].begin(), columns[i].end(), lpwstr);
-        lpwstr[columns[i].size()] = L'\0'; // Устанавливаем нулевой терминатор
-
-        lvc.pszText = lpwstr; // Устанавливаем текст столбца
-        ListView_InsertColumn(hwndListView, i, &lvc); // Вставляем столбец
-
-        // Освобождаем память после вставки столбца
-        delete[] lpwstr;
-    }
-
-    LVITEM lvi;
-    lvi.mask = LVIF_TEXT;
-
-    /*lvi.iItem = 0;
-    lvi.iSubItem = 0;
-    lvi.pszText = L"Item 1";
-    ListView_InsertItem(hwndListView, &lvi);
-
-    lvi.iSubItem = 1;
-    lvi.pszText = L"Subitem 1.1";
-    ListView_SetItem(hwndListView, &lvi);*/
+    AllocateTableMemory(hwndListView, WINDOW_WIDTH);
 
     return hwndListView;
 }
@@ -215,7 +158,7 @@ int RunMessageLoop()
 LRESULT CALLBACK WndProc(HWND hwnd/*дескриптор окна*/, UINT uMsg/*идентификатор 
     сообщения*/, WPARAM wParam, LPARAM lParam)
 {
-    HBRUSH hBrush;
+    HWND hwndListView = {};
 
     switch (uMsg) 
     {
@@ -226,24 +169,42 @@ LRESULT CALLBACK WndProc(HWND hwnd/*дескриптор окна*/, UINT uMsg/*
         {
             //Start sorting...
         }
-        if (wmId == IDC_EDIT) {
-            if (HIWORD(wParam) == EN_CHANGE) {
-                // Текст в текстовом поле изменился
-                HWND hwndEdit = GetDlgItem(hwnd, IDC_EDIT);
-                int length = GetWindowTextLength(hwndEdit);
-                wchar_t* buffer = new wchar_t[length + 1];
-                GetWindowText(hwndEdit, buffer, length + 1);
-                // Теперь buffer содержит текст из поля редактирования
-                delete[] buffer;
+        break;
+    }
+    case WM_NOTIFY:
+    {
+        LPNMHDR pnmhdr = (LPNMHDR)lParam;
+        if (pnmhdr->idFrom == ID_LISTVIEW)
+        {
+            switch (pnmhdr->code)
+            {
+            case LVN_BEGINLABELEDIT:
+            {
+                NMLVDISPINFO* plvdi = (NMLVDISPINFO*)lParam;
+                //HWND hEdit = (HWND)SendMessage(pnmhdr->hwndFrom, LVM_GETEDITCONTROL, 0, 0);
+                if (plvdi->item.iSubItem != 0)
+                {
+                    return true;
+                }
+                break;
+            }
+            case LVN_ENDLABELEDIT:
+            {
+                NMLVDISPINFO* plvdi = (NMLVDISPINFO*)lParam;
+                if (plvdi->item.pszText != NULL)
+                {
+                    ListView_SetItemText(pnmhdr->hwndFrom, plvdi->item.iItem, 0, plvdi->item.pszText);
+                }
+                break;
+            }
             }
         }
         break;
     }
     case WM_CREATE:
-        CreateTable(hwnd); 
+        CreateTable(hwnd);
         CreateStartBtn(hwnd);
-        CreateEditBox(hwnd);
-        CreateResulLabel(hwnd);
+        
         break;
     case WM_CLOSE:
         DestroyWindow(hwnd);
