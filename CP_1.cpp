@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <codecvt>
+#include <iostream>
 
 #pragma comment(lib, "Comctl32.lib")
 
@@ -172,7 +173,7 @@ HWND CreateEditBox(HWND hwndParent)
     int nwidth = 200;         
     int nheight = 25;         
 
-    HWND hwndEditBox = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"C:\\*",
+    HWND hwndEditBox = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"C:\\",
         WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT,
         xpos, ypos, nwidth, nheight, hwndParent, (HMENU)1001, GetModuleHandle(NULL), NULL);
 
@@ -284,52 +285,85 @@ struct FileInfo {
     LARGE_INTEGER fileSize;
 };
 
+//void ScanNext(const wchar_t* directory, std::vector<FileInfo>& files)
+//{
+//    size_t len = wcslen(directory) + 1; 
+//    wchar_t* tmpDir = new wchar_t[len];
+//    wcscpy_s(tmpDir, len, directory); 
+//    std::wstring searchPath;
+//    searchPath += std::wstring(tmpDir);
+//    WIN32_FIND_DATA findFileData = { 0 };
+//    HANDLE hFind = FindFirstFileW(searchPath.c_str(), &findFileData);
+//    if (hFind == INVALID_HANDLE_VALUE)
+//    {
+//        delete[] tmpDir;
+//        return;
+//    }
+//    wchar_t wsInput[] = L"C:\\*";
+//    if (wcscmp(tmpDir, L"C:\\*") == 0)
+//        tmpDir[wcslen(tmpDir) - 2] = '\0';
+//    do {
+//        std::wstring fileName = findFileData.cFileName;
+//        std::wstring fullPath;
+//        fullPath.append(tmpDir);
+//        fullPath.append(L"\\");
+//        fullPath.append(fileName);
+//        delete[] tmpDir;
+//
+//        if (fileName == L"." || fileName == L"..") {
+//            continue;
+//        }
+//
+//        if (findFileData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY &&
+//            !(findFileData.dwFileAttributes & FILE_ATTRIBUTE_SYSTEM))
+//        {
+//            ScanNext(fullPath.c_str(), files);
+//        }
+//        else 
+//        {            
+//            FileInfo fileInfo;
+//            std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
+//            fileInfo.fileName = converter.to_bytes(fullPath);
+//            fileInfo.fileSize.LowPart = findFileData.nFileSizeLow;
+//            fileInfo.fileSize.HighPart = findFileData.nFileSizeHigh;
+//            files.push_back(fileInfo);
+//        }
+//    } while (FindNextFileW(hFind, &findFileData) != 0);
+//    FindClose(hFind);
+//    delete[] tmpDir;
+//}
+
 void ScanNext(const wchar_t* directory, std::vector<FileInfo>& files)
 {
-    size_t len = wcslen(directory) + 1; 
-    wchar_t* tmpDir = new wchar_t[len];
-    wcscpy_s(tmpDir, len, directory); 
-    std::wstring searchPath;
-    searchPath += std::wstring(tmpDir);
-    WIN32_FIND_DATA findFileData = { 0 };
+    std::wstring searchPath = directory;
+    searchPath.append(L"\\*");
+    WIN32_FIND_DATA findFileData;
     HANDLE hFind = FindFirstFileW(searchPath.c_str(), &findFileData);
-    if (hFind == INVALID_HANDLE_VALUE)
-    {
-        delete[] tmpDir;
-        return;
+    if (hFind == INVALID_HANDLE_VALUE) {
+        return;  
     }
-    wchar_t wsInput[] = L"C:\\*";
-    if (wcscmp(tmpDir, L"C:\\*") == 0)
-        tmpDir[wcslen(tmpDir) - 2] = '\0';
     do {
-        std::wstring fileName = findFileData.cFileName;
-        std::wstring fullPath;
-        fullPath.append(tmpDir);
-        fullPath.append(L"\\");
-        fullPath.append(fileName);
-        delete[] tmpDir;
-
-        if (fileName == L"." || fileName == L"..") {
+        if (wcscmp(findFileData.cFileName, L".") == 0 || wcscmp(findFileData.cFileName, L"..") == 0) {
             continue;
         }
+        std::wstring fullPath = directory;
+        fullPath.append(L"\\");
+        fullPath.append(findFileData.cFileName);
 
-        if (findFileData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY &&
-            !(findFileData.dwFileAttributes & FILE_ATTRIBUTE_SYSTEM))
-        {
+        if (findFileData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
             ScanNext(fullPath.c_str(), files);
         }
-        else 
-        {            
+        else {
             FileInfo fileInfo;
             std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
-            fileInfo.fileName = converter.to_bytes(fullPath);
+            fileInfo.fileName = converter.to_bytes(fullPath);  
             fileInfo.fileSize.LowPart = findFileData.nFileSizeLow;
             fileInfo.fileSize.HighPart = findFileData.nFileSizeHigh;
             files.push_back(fileInfo);
         }
-    } while (FindNextFileW(hFind, &findFileData) != 0);
+
+    } while (FindNextFileW(hFind, &findFileData) != 0);  // Продолжаем поиск
     FindClose(hFind);
-    delete[] tmpDir;
 }
 
 void StartScanning(HWND hwnd)
@@ -337,6 +371,10 @@ void StartScanning(HWND hwnd)
     wchar_t* directory = OnButtonClick(hwnd);
     std::vector<FileInfo> files;
     ScanNext(directory, files);
+    for (const auto& file : files) {
+        std::cout << "File: " << file.fileName << " Size: "
+            << file.fileSize.QuadPart << " bytes\n";
+    }
 }
 
 LRESULT CALLBACK WndProc(HWND hwnd/*дескриптор окна*/, UINT uMsg/*идентификатор 
