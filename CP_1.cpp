@@ -4,6 +4,8 @@
 #include <vector>
 #include <codecvt>
 #include <iostream>
+#include <unordered_set>
+#include <filesystem>
 
 #pragma comment(lib, "Comctl32.lib")
 
@@ -280,101 +282,115 @@ TCHAR* OnButtonClick(HWND hwndParent) {
 #define MASK_FOUND L"*"
 #define SIZE_BUF 260
 
-struct FileInfo {
-    std::string fileName;
-    LARGE_INTEGER fileSize;
-};
-
-//void ScanNext(const wchar_t* directory, std::vector<FileInfo>& files)
-//{
-//    size_t len = wcslen(directory) + 1; 
-//    wchar_t* tmpDir = new wchar_t[len];
-//    wcscpy_s(tmpDir, len, directory); 
-//    std::wstring searchPath;
-//    searchPath += std::wstring(tmpDir);
-//    WIN32_FIND_DATA findFileData = { 0 };
-//    HANDLE hFind = FindFirstFileW(searchPath.c_str(), &findFileData);
-//    if (hFind == INVALID_HANDLE_VALUE)
-//    {
-//        delete[] tmpDir;
-//        return;
-//    }
-//    wchar_t wsInput[] = L"C:\\*";
-//    if (wcscmp(tmpDir, L"C:\\*") == 0)
-//        tmpDir[wcslen(tmpDir) - 2] = '\0';
-//    do {
-//        std::wstring fileName = findFileData.cFileName;
-//        std::wstring fullPath;
-//        fullPath.append(tmpDir);
-//        fullPath.append(L"\\");
-//        fullPath.append(fileName);
-//        delete[] tmpDir;
-//
-//        if (fileName == L"." || fileName == L"..") {
-//            continue;
-//        }
-//
-//        if (findFileData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY &&
-//            !(findFileData.dwFileAttributes & FILE_ATTRIBUTE_SYSTEM))
-//        {
-//            ScanNext(fullPath.c_str(), files);
-//        }
-//        else 
-//        {            
-//            FileInfo fileInfo;
-//            std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
-//            fileInfo.fileName = converter.to_bytes(fullPath);
-//            fileInfo.fileSize.LowPart = findFileData.nFileSizeLow;
-//            fileInfo.fileSize.HighPart = findFileData.nFileSizeHigh;
-//            files.push_back(fileInfo);
-//        }
-//    } while (FindNextFileW(hFind, &findFileData) != 0);
-//    FindClose(hFind);
-//    delete[] tmpDir;
-//}
-
-void ScanNext(const wchar_t* directory, std::vector<FileInfo>& files)
+std::string GetFileNameFromPath(const std::string& fullPath) 
 {
+    auto pos = fullPath.find_last_of("\\/");
+    if (pos != std::string::npos) 
+    {
+        return fullPath.substr(pos + 1);
+    }
+    return fullPath;
+}
+
+std::string GetUniqueFileName(const std::string& fullPath, 
+    std::unordered_set<std::string>& fileNames) 
+{
+    std::string fileName = GetFileNameFromPath(fullPath);
+    std::string directoryPath = fullPath.substr(0, fullPath.find_last_of("\\/"));
+    std::string uniqueName = fileName;
+    int counter = 1;
+    bool isUnique = false;
+    while (fileNames.find(uniqueName) != fileNames.end()) 
+    {
+        uniqueName = fileName + "(" + std::to_string(counter++) + ")";
+        isUnique = true;
+    }
+    fileNames.insert(uniqueName);
+    if (isUnique)
+        return directoryPath + "\\" + uniqueName;
+    else
+        return fullPath;
+}
+
+void LogError(const std::wstring& filePath, int& countOfErrors) 
+{
+    DWORD errorCode = GetLastError();  
+    std::wcerr << L"Failed to access file: " << filePath
+        << L" Error code: " << errorCode << std::endl;
+    countOfErrors++;
+}
+
+LONGLONG GetMyFileSize(const WIN32_FIND_DATA& findFileData) 
+{
+    LARGE_INTEGER fileSize;
+    fileSize.LowPart = findFileData.nFileSizeLow;  
+    fileSize.HighPart = findFileData.nFileSizeHigh;  
+    return fileSize.QuadPart;  
+}
+
+void ScanNext(const wchar_t* directory, std::unordered_set<std::string>& fileNames, 
+    std::vector<std::string>& filesPath, std::vector<std::string>& filesSizes,
+    int& countOfErrors) {
     std::wstring searchPath = directory;
     searchPath.append(L"\\*");
     WIN32_FIND_DATA findFileData;
     HANDLE hFind = FindFirstFileW(searchPath.c_str(), &findFileData);
-    if (hFind == INVALID_HANDLE_VALUE) {
-        return;  
+    if (hFind == INVALID_HANDLE_VALUE) 
+    {
+        LogError(searchPath, countOfErrors);
+        return;
     }
-    do {
-        if (wcscmp(findFileData.cFileName, L".") == 0 || wcscmp(findFileData.cFileName, L"..") == 0) {
+    do 
+    {
+        if (wcscmp(findFileData.cFileName, L".") == 0 || wcscmp(findFileData.cFileName, L"..") == 0)
             continue;
-        }
         std::wstring fullPath = directory;
         fullPath.append(L"\\");
         fullPath.append(findFileData.cFileName);
-
-        if (findFileData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
-            ScanNext(fullPath.c_str(), files);
+        if (findFileData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) 
+        {
+            ScanNext(fullPath.c_str(), fileNames, filesPath,
+                filesSizes, countOfErrors);
         }
-        else {
-            FileInfo fileInfo;
+        else 
+        {
             std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
-            fileInfo.fileName = converter.to_bytes(fullPath);  
-            fileInfo.fileSize.LowPart = findFileData.nFileSizeLow;
-            fileInfo.fileSize.HighPart = findFileData.nFileSizeHigh;
-            files.push_back(fileInfo);
+            std::string fileName = converter.to_bytes(fullPath);
+            std::string uniqueFileName = GetUniqueFileName(fileName, fileNames);
+            filesPath.push_back(uniqueFileName);
+            LONGLONG fileSize = GetMyFileSize(findFileData);
+            std::string sizeStr = std::to_string(fileSize);
+            filesSizes.push_back(sizeStr);
         }
-
-    } while (FindNextFileW(hFind, &findFileData) != 0);  // Продолжаем поиск
+    } while (FindNextFileW(hFind, &findFileData) != 0);
+    if (GetLastError() != ERROR_NO_MORE_FILES) 
+    {
+        LogError(searchPath, countOfErrors);
+    }
     FindClose(hFind);
 }
 
-void StartScanning(HWND hwnd)
+struct FileInfo {
+    std::string filePath;
+    LONGLONG fileSize;
+};
+
+void StartSorting(std::vector<std::string>& filesPath,
+    std::vector<std::string>& filesSizes)
 {
-    wchar_t* directory = OnButtonClick(hwnd);
-    std::vector<FileInfo> files;
-    ScanNext(directory, files);
-    for (const auto& file : files) {
-        std::cout << "File: " << file.fileName << " Size: "
-            << file.fileSize.QuadPart << " bytes\n";
-    }
+
+}
+
+void StartScanning(HWND hwnd) 
+{
+    wchar_t* directory = OnButtonClick(hwnd);  
+    std::unordered_set<std::string> fileNames; 
+    std::vector<std::string> filesPath;
+    std::vector<std::string> filesSizes;
+    int countOfErrors = 0;
+    ScanNext(directory, fileNames, filesPath, filesSizes, countOfErrors);
+    std::cout << "Number of failure readings: " << countOfErrors << "\n";
+    StartSorting(filesPath, filesSizes);
 }
 
 LRESULT CALLBACK WndProc(HWND hwnd/*дескриптор окна*/, UINT uMsg/*идентификатор 
@@ -412,9 +428,19 @@ LRESULT CALLBACK WndProc(HWND hwnd/*дескриптор окна*/, UINT uMsg/*
     return 0;
 }
 
+void CreateConsole() {
+    AllocConsole();  
+    FILE* pCout;  
+    freopen_s(&pCout, "CONOUT$", "w", stdout);  
+    FILE* pCerr;  
+    freopen_s(&pCerr, "CONOUT$", "w", stderr);  
+    std::cout << "Console has been created.\n";
+}
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
     int nCmdShow)
 {
+    CreateConsole();
     const wchar_t className[] = L"MyWindowClass";
 
     if (!RegisterWindowClass(hInstance, className))
