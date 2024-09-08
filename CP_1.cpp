@@ -10,6 +10,8 @@
 #pragma comment(lib, "Comctl32.lib")
 
 #define IDC_SEARCHBTN 2
+#define IDC_EDITBOX 1001
+#define IDC_LISTVIEW 1002
 
 BOOL RegisterWindowClass(HINSTANCE hInstance, const wchar_t* className);
 HWND CreateAppWindow(HINSTANCE hInstance, const wchar_t* className, int nCmdShow);
@@ -123,48 +125,21 @@ HWND CreateStartBtn(HWND hwndParent)
 
 HWND AllocateDirectoriesTableMemory(HWND hwndListView, const int WINDOW_WIDTH)
 {
-    std::vector<std::vector<std::wstring>> rows = {
-        { L"1", L"C:\hentai", L"13 kb", L"1", L"C:\hentai", L"15 kb" },
-        { L"1", L"C:\hentai", L"13 kb", L"1", L"C:\hentai", L"15 kb" },
-        { L"1", L"C:\hentai", L"13 kb", L"1", L"C:\hentai", L"15 kb" },
-        { L"1", L"C:\hentai", L"13 kb", L"1", L"C:\hentai", L"15 kb" },
-        { L"1", L"C:\hentai", L"13 kb", L"1", L"C:\hentai", L"15 kb" },
-        { L"1", L"C:\hentai", L"13 kb", L"1", L"C:\hentai", L"15 kb" },
-        { L"1", L"C:\hentai", L"13 kb", L"1", L"C:\hentai", L"15 kb" },
-        { L"1", L"C:\hentai", L"13 kb", L"1", L"C:\hentai", L"15 kb" },
-        { L"1", L"C:\hentai", L"13 kb", L"1", L"C:\hentai", L"15 kb" },
-        { L"2", L"C:\hentai", L"19 kb", L"2", L"C:\hentai", L"11 kb" }
-    };
+    const int numOfColumns = 6;
 
-    int numOfColumns = rows[0].size();
+    LVCOLUMN lvc;
+    ZeroMemory(&lvc, sizeof(LVCOLUMN));
+    lvc.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_SUBITEM;
+
+    const wchar_t* headers[] = { L"Number", L"File Path", L"File Size", L"Number", L"Sorted File Path", L"Sorted File Size" };
 
     for (int i = 0; i < numOfColumns; ++i)
     {
-        LVCOLUMN lvc;
-        ZeroMemory(&lvc, sizeof(LVCOLUMN));
-        lvc.mask = LVCF_TEXT | LVCF_WIDTH;
+        lvc.iSubItem = i;
+        lvc.pszText = const_cast<LPWSTR>(headers[i]);
         lvc.cx = WINDOW_WIDTH / numOfColumns;
         ListView_InsertColumn(hwndListView, i, &lvc);
     }
-
-    for (int i = 0; i < rows.size(); ++i)
-    {
-        LVITEM lvItem;
-        ZeroMemory(&lvItem, sizeof(LVITEM));
-
-        lvItem.mask = LVIF_TEXT;
-        lvItem.iItem = i;
-        lvItem.iSubItem = 0;
-
-        lvItem.pszText = const_cast<LPWSTR>(rows[i][0].c_str());
-        ListView_InsertItem(hwndListView, &lvItem);
-
-        for (int j = 1; j < numOfColumns; ++j)
-        {
-            ListView_SetItemText(hwndListView, i, j, const_cast<LPWSTR>(rows[i][j].c_str()));
-        }
-    }
-
     return hwndListView;
 }
 
@@ -177,7 +152,7 @@ HWND CreateEditBox(HWND hwndParent)
 
     HWND hwndEditBox = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"C:\\",
         WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT,
-        xpos, ypos, nwidth, nheight, hwndParent, (HMENU)1001, GetModuleHandle(NULL), NULL);
+        xpos, ypos, nwidth, nheight, hwndParent, (HMENU)IDC_EDITBOX, GetModuleHandle(NULL), NULL);
 
     return hwndEditBox;
 }
@@ -186,7 +161,7 @@ HWND CreateEditBox(HWND hwndParent)
 HWND CreateTable(HWND hwndParent, int WIDTH, int HEIGHT, 
     int xPos, int yPos, int ID_LISTVIEW, bool isCanEditLabels)
 {
-    DWORD style = WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_NOCOLUMNHEADER | WS_BORDER;
+    DWORD style = WS_CHILD | WS_VISIBLE | LVS_REPORT | WS_BORDER;
 
     if (isCanEditLabels)
         style |= LVS_EDITLABELS;  
@@ -219,7 +194,7 @@ void CreateTables(HWND hwndParent)
 
     //AllocateHeaderTableMemory(hwndListView, windowWidth);
     HWND hwndListView = CreateTable(hwndParent, windowWidth, windowHeight - 170,
-        8, 50, 1002, false);
+        8, 50, IDC_LISTVIEW, false);
     AllocateDirectoriesTableMemory(hwndListView, windowWidth);
 }
 
@@ -268,13 +243,16 @@ bool ProcessNotify(LPARAM lParam)
     return false;
 }
 
-TCHAR* OnButtonClick(HWND hwndParent) {
-    HWND hWndEdit = GetDlgItem(hwndParent, 1001);
+TCHAR* OnButtonClick(HWND hwndParent) 
+{
+    HWND hwndListView = GetDlgItem(hwndParent, IDC_LISTVIEW);
+    ListView_DeleteAllItems(hwndListView);
+    HWND hWndEdit = GetDlgItem(hwndParent, IDC_EDITBOX);
     int length = GetWindowTextLengthW(hWndEdit) + 1;
     TCHAR* buffer = new TCHAR[length];
     if (buffer)
     {
-        GetDlgItemTextW(hwndParent, 1001, (LPWSTR)buffer, length);
+        GetDlgItemTextW(hwndParent, IDC_EDITBOX, (LPWSTR)buffer, length);
     }
     return buffer;
 }
@@ -375,22 +353,125 @@ struct FileInfo {
     LONGLONG fileSize;
 };
 
+void merge(std::vector<std::string>& files, std::vector<std::string>& sizes, int left, int mid, int right) 
+{
+    int n1 = mid - left + 1;
+    int n2 = right - mid;
+
+    std::vector<std::string> leftFiles(n1), rightFiles(n2);
+    std::vector<std::string> leftSizes(n1), rightSizes(n2);
+
+    for (int i = 0; i < n1; i++) 
+    {
+        leftFiles[i] = files[left + i];
+        leftSizes[i] = sizes[left + i];
+    }
+    for (int i = 0; i < n2; i++) 
+    {
+        rightFiles[i] = files[mid + 1 + i];
+        rightSizes[i] = sizes[mid + 1 + i];
+    }
+
+    int i = 0, j = 0, k = left;
+
+    while (i < n1 && j < n2) 
+    {
+        if (leftSizes[i].length() < rightSizes[j].length() ||
+            (leftSizes[i].length() == rightSizes[j].length() && leftSizes[i] <= rightSizes[j]))
+        {
+            sizes[k] = leftSizes[i];
+            files[k] = leftFiles[i];
+            i++;
+        }
+        else 
+        {
+            sizes[k] = rightSizes[j];
+            files[k] = rightFiles[j];
+            j++;
+        }
+        k++;
+    }
+
+    while (i < n1) {
+        sizes[k] = leftSizes[i];
+        files[k] = leftFiles[i];
+        i++;
+        k++;
+    }
+    while (j < n2) {
+        sizes[k] = rightSizes[j];
+        files[k] = rightFiles[j];
+        j++;
+        k++;
+    }
+}
+
+void mergeSort(std::vector<std::string>& files, std::vector<std::string>& sizes, int left, int right) 
+{
+    if (left < right)
+    {
+        int mid = left + (right - left) / 2;//to avoid overflow
+        mergeSort(files, sizes, left, mid);
+        mergeSort(files, sizes, mid + 1, right);
+        merge(files, sizes, left, mid, right);
+    }
+}
+
 void StartSorting(std::vector<std::string>& filesPath,
     std::vector<std::string>& filesSizes)
 {
-
+    mergeSort(filesPath, filesSizes, 0, filesSizes.size() - 1);
 }
 
-void StartScanning(HWND hwnd) 
+std::wstring ToWString(const std::string& str)
 {
-    wchar_t* directory = OnButtonClick(hwnd);  
+    return std::wstring(str.begin(), str.end());
+}
+
+void PrintResults(std::vector<std::string>& filesPath, std::vector<std::string>& filesSizes,
+    std::vector<std::string>& sortedFilesPath, std::vector<std::string>& sortedFilesSizes,
+    HWND hwndParent)
+{
+    HWND hwndListView = GetDlgItem(hwndParent, IDC_LISTVIEW);
+    const int numOfColumns = 6;
+    if (filesPath.size() != filesSizes.size() || sortedFilesPath.size() != sortedFilesSizes.size())
+        return;
+    for (int i = 0; i < filesPath.size(); ++i)
+    {
+        LVITEM lvItem;
+        ZeroMemory(&lvItem, sizeof(LVITEM));
+
+        lvItem.mask = LVIF_TEXT;
+        lvItem.iItem = i;
+        lvItem.iSubItem = 0;
+
+        std::wstring index = std::to_wstring(i + 1);
+        ListView_InsertItem(hwndListView, &lvItem);
+
+        ListView_SetItemText(hwndListView, i, 0, const_cast<LPWSTR>(index.c_str()));
+        ListView_SetItemText(hwndListView, i, 1, const_cast<LPWSTR>(ToWString(filesPath[i]).c_str()));
+        ListView_SetItemText(hwndListView, i, 2, const_cast<LPWSTR>(ToWString(filesSizes[i]).c_str()));
+        ListView_SetItemText(hwndListView, i, 3, const_cast<LPWSTR>(index.c_str()));
+        ListView_SetItemText(hwndListView, i, 4, const_cast<LPWSTR>(ToWString(sortedFilesPath[i]).c_str()));
+        ListView_SetItemText(hwndListView, i, 5, const_cast<LPWSTR>(ToWString(sortedFilesSizes[i]).c_str()));
+    }
+}
+
+void StartScanning(HWND hwndParent) 
+{
+    wchar_t* directory = OnButtonClick(hwndParent);  
     std::unordered_set<std::string> fileNames; 
     std::vector<std::string> filesPath;
     std::vector<std::string> filesSizes;
     int countOfErrors = 0;
     ScanNext(directory, fileNames, filesPath, filesSizes, countOfErrors);
     std::cout << "Number of failure readings: " << countOfErrors << "\n";
-    StartSorting(filesPath, filesSizes);
+    std::vector<std::string> sortedFilesPath = filesPath;
+    std::vector<std::string> sortedFilesSizes = filesSizes;
+    StartSorting(sortedFilesPath, sortedFilesSizes);
+    PrintResults(filesPath, filesSizes, filesPath, filesSizes, hwndParent);
+    /*for (size_t i = 0; i < sortedFilesPath.size(); ++i)
+        std::cout << sortedFilesPath[i] << " - " << sortedFilesSizes[i] << std::endl;*/
 }
 
 LRESULT CALLBACK WndProc(HWND hwnd/*дескриптор окна*/, UINT uMsg/*идентификатор 
@@ -434,7 +515,6 @@ void CreateConsole() {
     freopen_s(&pCout, "CONOUT$", "w", stdout);  
     FILE* pCerr;  
     freopen_s(&pCerr, "CONOUT$", "w", stderr);  
-    std::cout << "Console has been created.\n";
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
