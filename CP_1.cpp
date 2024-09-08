@@ -23,37 +23,16 @@ int RunMessageLoop();
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
-BOOL RegisterWindowClass(HINSTANCE hInstance, const wchar_t* className)
+BOOL RegisterWindowClass(HINSTANCE hInstance)
 {
     WNDCLASSW wc = { 0 };
     wc.lpfnWndProc = WndProc;
     wc.hInstance = hInstance;
-    wc.lpszClassName = className; 
+    wc.lpszClassName = L"MainClass";
     wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
     wc.hCursor = LoadCursor(NULL, IDC_ARROW);
 
     return RegisterClassW(&wc);
-}
-
-HWND CreateAppWindow(HINSTANCE hInstance, const wchar_t* className, int nCmdShow)
-{
-    HWND hwnd = CreateWindowEx(
-        0,
-        className,
-        L"Lab_1",
-        WS_OVERLAPPEDWINDOW,
-        0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN),
-        NULL, NULL, hInstance, NULL
-    );
-
-    if (hwnd != NULL)
-    {
-        ShowWindow(hwnd, 3);//describes how to show window (can be parametrized by digits 
-        //according to the table)
-        UpdateWindow(hwnd);//send WM_PAINT without staying at queue
-    }
-
-    return hwnd;
 }
 
 int CalculateWindowWidth(HWND hwndParent)
@@ -82,7 +61,7 @@ HWND CreateStartBtn(HWND hwndParent)
         L"BUTTON",      
         L"Sort",  
         WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,  
-         windowWidth - 120, windowHeight - 100, 60, 50,
+         windowWidth - 120, windowHeight - 135, 60, 50,
         hwndParent,     
         (HMENU)IDC_SEARCHBTN,       
         (HINSTANCE)GetWindowLongPtr(hwndParent, GWLP_HINSTANCE), 
@@ -192,8 +171,7 @@ void CreateTables(HWND hwndParent)
     int windowWidth = CalculateWindowWidth(hwndParent);
     int windowHeight = CalculateWindowHeight(hwndParent);
 
-    //AllocateHeaderTableMemory(hwndListView, windowWidth);
-    HWND hwndListView = CreateTable(hwndParent, windowWidth, windowHeight - 170,
+    HWND hwndListView = CreateTable(hwndParent, windowWidth, windowHeight - 200,
         8, 50, IDC_LISTVIEW, false);
     AllocateDirectoriesTableMemory(hwndListView, windowWidth);
 }
@@ -260,35 +238,40 @@ TCHAR* OnButtonClick(HWND hwndParent)
 #define MASK_FOUND L"*"
 #define SIZE_BUF 260
 
-std::string GetFileNameFromPath(const std::string& fullPath) 
+std::wstring GetFileNameFromPath(const std::wstring& fullPath)
 {
-    auto pos = fullPath.find_last_of("\\/");
-    if (pos != std::string::npos) 
+    size_t pos = fullPath.find_last_of(L"\\/");
+    if (pos != std::wstring::npos)
     {
         return fullPath.substr(pos + 1);
     }
     return fullPath;
 }
 
-std::string GetUniqueFileName(const std::string& fullPath, 
-    std::unordered_set<std::string>& fileNames) 
+std::wstring GetUniqueFileName(const std::wstring& fullPath,
+    std::unordered_set<std::wstring>& fileNames)
 {
-    std::string fileName = GetFileNameFromPath(fullPath);
-    std::string directoryPath = fullPath.substr(0, fullPath.find_last_of("\\/"));
-    std::string uniqueName = fileName;
+    std::wstring fileName = GetFileNameFromPath(fullPath);
+    std::wstring directoryPath = fullPath.substr(0, fullPath.find_last_of(L"\\/"));
+    std::wstring uniqueName = fileName;
     int counter = 1;
     bool isUnique = false;
-    while (fileNames.find(uniqueName) != fileNames.end()) 
+    while (fileNames.find(uniqueName) != fileNames.end())
     {
-        uniqueName = fileName + "(" + std::to_string(counter++) + ")";
+        uniqueName = fileName + L"(" + std::to_wstring(counter++) + L")";
         isUnique = true;
     }
     fileNames.insert(uniqueName);
     if (isUnique)
-        return directoryPath + "\\" + uniqueName;
+    {
+        return directoryPath + L"\\" + uniqueName;
+    }
     else
+    {
         return fullPath;
+    }
 }
+
 
 void LogError(const std::wstring& filePath, int& countOfErrors) 
 {
@@ -306,8 +289,8 @@ LONGLONG GetMyFileSize(const WIN32_FIND_DATA& findFileData)
     return fileSize.QuadPart;  
 }
 
-void ScanNext(const wchar_t* directory, std::unordered_set<std::string>& fileNames, 
-    std::vector<std::string>& filesPath, std::vector<std::string>& filesSizes,
+void ScanNext(const wchar_t* directory, std::unordered_set<std::wstring>& fileNames, 
+    std::vector<std::wstring>& filesPath, std::vector<std::wstring>& filesSizes,
     int& countOfErrors) {
     std::wstring searchPath = directory;
     searchPath.append(L"\\*");
@@ -334,11 +317,13 @@ void ScanNext(const wchar_t* directory, std::unordered_set<std::string>& fileNam
         {
             std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
             std::string fileName = converter.to_bytes(fullPath);
-            std::string uniqueFileName = GetUniqueFileName(fileName, fileNames);
+            std::wstring uniqueFileName = GetUniqueFileName(converter.from_bytes(fileName), fileNames); 
             filesPath.push_back(uniqueFileName);
+
             LONGLONG fileSize = GetMyFileSize(findFileData);
-            std::string sizeStr = std::to_string(fileSize);
+            std::wstring sizeStr = std::to_wstring(fileSize); 
             filesSizes.push_back(sizeStr);
+
         }
     } while (FindNextFileW(hFind, &findFileData) != 0);
     if (GetLastError() != ERROR_NO_MORE_FILES) 
@@ -349,17 +334,17 @@ void ScanNext(const wchar_t* directory, std::unordered_set<std::string>& fileNam
 }
 
 struct FileInfo {
-    std::string filePath;
+    std::wstring filePath;
     LONGLONG fileSize;
 };
 
-void merge(std::vector<std::string>& files, std::vector<std::string>& sizes, int left, int mid, int right) 
+void Merge(std::vector<std::wstring>& files, std::vector<std::wstring>& sizes, int left, int mid, int right) 
 {
     int n1 = mid - left + 1;
     int n2 = right - mid;
 
-    std::vector<std::string> leftFiles(n1), rightFiles(n2);
-    std::vector<std::string> leftSizes(n1), rightSizes(n2);
+    std::vector<std::wstring> leftFiles(n1), rightFiles(n2);
+    std::vector<std::wstring> leftSizes(n1), rightSizes(n2);
 
     for (int i = 0; i < n1; i++) 
     {
@@ -406,21 +391,21 @@ void merge(std::vector<std::string>& files, std::vector<std::string>& sizes, int
     }
 }
 
-void mergeSort(std::vector<std::string>& files, std::vector<std::string>& sizes, int left, int right) 
+void MergeSort(std::vector<std::wstring>& files, std::vector<std::wstring>& sizes, int left, int right) 
 {
     if (left < right)
     {
         int mid = left + (right - left) / 2;//to avoid overflow
-        mergeSort(files, sizes, left, mid);
-        mergeSort(files, sizes, mid + 1, right);
-        merge(files, sizes, left, mid, right);
+        MergeSort(files, sizes, left, mid);
+        MergeSort(files, sizes, mid + 1, right);
+        Merge(files, sizes, left, mid, right);
     }
 }
 
-void StartSorting(std::vector<std::string>& filesPath,
-    std::vector<std::string>& filesSizes)
+void StartSorting(std::vector<std::wstring>& filesPath,
+    std::vector<std::wstring>& filesSizes)
 {
-    mergeSort(filesPath, filesSizes, 0, filesSizes.size() - 1);
+    MergeSort(filesPath, filesSizes, 0, filesSizes.size() - 1);
 }
 
 std::wstring ToWString(const std::string& str)
@@ -428,14 +413,16 @@ std::wstring ToWString(const std::string& str)
     return std::wstring(str.begin(), str.end());
 }
 
-void PrintResults(std::vector<std::string>& filesPath, std::vector<std::string>& filesSizes,
-    std::vector<std::string>& sortedFilesPath, std::vector<std::string>& sortedFilesSizes,
+void PrintResults(std::vector<std::wstring>& filesPath, std::vector<std::wstring>& filesSizes,
+    std::vector<std::wstring>& sortedFilesPath, std::vector<std::wstring>& sortedFilesSizes,
     HWND hwndParent)
 {
     HWND hwndListView = GetDlgItem(hwndParent, IDC_LISTVIEW);
     const int numOfColumns = 6;
     if (filesPath.size() != filesSizes.size() || sortedFilesPath.size() != sortedFilesSizes.size())
         return;
+    SendMessage(hwndListView, WM_SETREDRAW, FALSE, 0);
+
     for (int i = 0; i < filesPath.size(); ++i)
     {
         LVITEM lvItem;
@@ -448,30 +435,56 @@ void PrintResults(std::vector<std::string>& filesPath, std::vector<std::string>&
         std::wstring index = std::to_wstring(i + 1);
         ListView_InsertItem(hwndListView, &lvItem);
 
-        ListView_SetItemText(hwndListView, i, 0, const_cast<LPWSTR>(index.c_str()));
-        ListView_SetItemText(hwndListView, i, 1, const_cast<LPWSTR>(ToWString(filesPath[i]).c_str()));
-        ListView_SetItemText(hwndListView, i, 2, const_cast<LPWSTR>(ToWString(filesSizes[i]).c_str()));
-        ListView_SetItemText(hwndListView, i, 3, const_cast<LPWSTR>(index.c_str()));
-        ListView_SetItemText(hwndListView, i, 4, const_cast<LPWSTR>(ToWString(sortedFilesPath[i]).c_str()));
-        ListView_SetItemText(hwndListView, i, 5, const_cast<LPWSTR>(ToWString(sortedFilesSizes[i]).c_str()));
+        ListView_SetItemText(hwndListView, i, 0, (LPWSTR)index.c_str());
+        ListView_SetItemText(hwndListView, i, 1, (LPWSTR)(filesPath[i]).c_str());
+        ListView_SetItemText(hwndListView, i, 2, (LPWSTR)(filesSizes[i]).c_str());
+        ListView_SetItemText(hwndListView, i, 3, (LPWSTR)(index.c_str()));
+        ListView_SetItemText(hwndListView, i, 4, (LPWSTR)(sortedFilesPath[i]).c_str());
+        ListView_SetItemText(hwndListView, i, 5, (LPWSTR)(sortedFilesSizes[i]).c_str());
     }
+    SendMessage(hwndListView, WM_SETREDRAW, TRUE, 0);
+    RedrawWindow(hwndListView, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW);
 }
 
 void StartScanning(HWND hwndParent) 
 {
     wchar_t* directory = OnButtonClick(hwndParent);  
-    std::unordered_set<std::string> fileNames; 
-    std::vector<std::string> filesPath;
-    std::vector<std::string> filesSizes;
+    std::unordered_set<std::wstring> fileNames; 
+    std::vector<std::wstring> filesPath;
+    std::vector<std::wstring> filesSizes;
     int countOfErrors = 0;
     ScanNext(directory, fileNames, filesPath, filesSizes, countOfErrors);
     std::cout << "Number of failure readings: " << countOfErrors << "\n";
-    std::vector<std::string> sortedFilesPath = filesPath;
-    std::vector<std::string> sortedFilesSizes = filesSizes;
+    std::vector<std::wstring> sortedFilesPath = filesPath;
+    std::vector<std::wstring> sortedFilesSizes = filesSizes;
     StartSorting(sortedFilesPath, sortedFilesSizes);
-    PrintResults(filesPath, filesSizes, filesPath, filesSizes, hwndParent);
-    /*for (size_t i = 0; i < sortedFilesPath.size(); ++i)
-        std::cout << sortedFilesPath[i] << " - " << sortedFilesSizes[i] << std::endl;*/
+    PrintResults(filesPath, filesSizes, sortedFilesPath, sortedFilesSizes, hwndParent);
+}
+
+HWND CreateAppWindow(HINSTANCE hInstance, int nCmdShow)
+{
+    HWND hwnd = CreateWindowEx(
+        0,
+        L"MainClass",
+        L"Lab_1",
+        WS_OVERLAPPEDWINDOW,
+        0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CXSCREEN),
+        NULL,
+        NULL,
+        hInstance,
+        NULL
+    );
+    LONG style = GetWindowLong(hwnd, GWL_STYLE);
+    style &= ~WS_MAXIMIZEBOX;
+    SetWindowLong(hwnd, GWL_STYLE, style);
+    if (hwnd != NULL)
+    {
+        ShowWindow(hwnd, 3);//describes how to show window (can be parametrized by digits 
+        //according to the table)
+        UpdateWindow(hwnd);//send WM_PAINT without staying at queue
+    }
+
+    return hwnd;
 }
 
 LRESULT CALLBACK WndProc(HWND hwnd/*дескриптор окна*/, UINT uMsg/*идентификатор 
@@ -521,15 +534,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     int nCmdShow)
 {
     CreateConsole();
-    const wchar_t className[] = L"MyWindowClass";
-
-    if (!RegisterWindowClass(hInstance, className))
+    if (!RegisterWindowClass(hInstance))
     {
         MessageBoxW(NULL, L"Failed to register window class", L"Error", MB_OK | MB_ICONERROR);
         return 0;
     }
 
-    HWND hwnd = CreateAppWindow(hInstance, className, nCmdShow);
+    HWND hwnd = CreateAppWindow(hInstance, nCmdShow);
     if (hwnd == NULL)
     {
         MessageBoxW(NULL, L"Failed to create window", L"Error", MB_OK | MB_ICONERROR);
