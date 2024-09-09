@@ -15,6 +15,8 @@
 #define IDC_SEARCHBTN 2
 #define IDC_EDITBOX 1001
 #define IDC_LISTVIEW 1002
+#define MASK_FOUND L"*"
+#define SIZE_BUF 260
 
 BOOL RegisterWindowClass(HINSTANCE hInstance, const wchar_t* className);
 HWND CreateAppWindow(HINSTANCE hInstance, const wchar_t* className, int nCmdShow);
@@ -206,16 +208,11 @@ TCHAR* OnButtonClick(HWND hwndParent)
     return buffer;
 }
 
-#define MASK_FOUND L"*"
-#define SIZE_BUF 260
-
 std::wstring GetFileNameFromPath(const std::wstring& fullPath)
 {
     size_t pos = fullPath.find_last_of(L"\\/");
     if (pos != std::wstring::npos)
-    {
         return fullPath.substr(pos + 1);
-    }
     return fullPath;
 }
 
@@ -227,13 +224,9 @@ std::wstring GetUniqueFileName(const std::wstring& fullPath,
     int count = nameCount[fileName];
     std::wstring uniqueName;
     if (count > 0) 
-    {
-        uniqueName = fileName + L"[" + std::to_wstring(count) + L"]";
-    }
+        uniqueName = fileName + L"(" + std::to_wstring(count) + L")";
     else 
-    {
         uniqueName = fileName;
-    }
     nameCount[fileName] = count + 1;
     return directoryPath + L"\\" + uniqueName;
 }
@@ -424,7 +417,6 @@ void PrintResults(std::vector<std::wstring>& filesPath, std::vector<std::wstring
     SendMessage(hwndListView, WM_SETREDRAW, TRUE, 0);
     RedrawWindow(hwndListView, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW);
 }
-
 
 void StartScanning(HWND hwndParent) 
 {
