@@ -6,6 +6,7 @@
 #include <iostream>
 #include <unordered_set>
 #include <filesystem>
+#include <unordered_map>
 
 #pragma comment(lib, "Comctl32.lib")
 
@@ -249,37 +250,47 @@ std::wstring GetFileNameFromPath(const std::wstring& fullPath)
 }
 
 std::wstring GetUniqueFileName(const std::wstring& fullPath,
-    std::unordered_set<std::wstring>& fileNames)
+    std::unordered_map<std::wstring, int>& nameCount)
 {
     std::wstring fileName = GetFileNameFromPath(fullPath);
     std::wstring directoryPath = fullPath.substr(0, fullPath.find_last_of(L"\\/"));
-    std::wstring uniqueName = fileName;
-    int counter = 1;
-    bool isUnique = false;
-    while (fileNames.find(uniqueName) != fileNames.end())
+    int count = nameCount[fileName];
+    std::wstring uniqueName;
+    if (count > 0) 
     {
-        uniqueName = fileName + L"(" + std::to_wstring(counter++) + L")";
-        isUnique = true;
+        uniqueName = fileName + L"[" + std::to_wstring(count) + L"]";
     }
-    fileNames.insert(uniqueName);
-    if (isUnique)
+    else 
     {
-        return directoryPath + L"\\" + uniqueName;
+        uniqueName = fileName;
     }
-    else
-    {
-        return fullPath;
-    }
+    nameCount[fileName] = count + 1;
+    return directoryPath + L"\\" + uniqueName;
 }
 
+struct ErrorInfo {
+    std::wstring filePath;
+    DWORD errorCode;
+};
 
-void LogError(const std::wstring& filePath, int& countOfErrors) 
+std::vector<ErrorInfo> errorBuffer;
+
+void LogError(const std::wstring& filePath, int& countOfErrors)
 {
-    DWORD errorCode = GetLastError();  
-    std::wcerr << L"Failed to access file: " << filePath
-        << L" Error code: " << errorCode << std::endl;
+    ErrorInfo err{ filePath, GetLastError() };
+    errorBuffer.push_back(err);
     countOfErrors++;
 }
+
+void FlushErrors(int& countOfErrors)
+{
+    for (const auto& error : errorBuffer) {
+        std::wcerr << L"Failed to access file: " << error.filePath
+            << L" Error code: " << error.errorCode << std::endl;
+    }
+    std::cout << "Number of failure readings: " << countOfErrors << "\n";
+}
+
 
 LONGLONG GetMyFileSize(const WIN32_FIND_DATA& findFileData) 
 {
@@ -289,7 +300,7 @@ LONGLONG GetMyFileSize(const WIN32_FIND_DATA& findFileData)
     return fileSize.QuadPart;  
 }
 
-void ScanNext(const wchar_t* directory, std::unordered_set<std::wstring>& fileNames, 
+void ScanNext(const wchar_t* directory, std::unordered_map<std::wstring, int>& fileNames,
     std::vector<std::wstring>& filesPath, std::vector<std::wstring>& filesSizes,
     int& countOfErrors) {
     std::wstring searchPath = directory;
@@ -314,16 +325,10 @@ void ScanNext(const wchar_t* directory, std::unordered_set<std::wstring>& fileNa
                 filesSizes, countOfErrors);
         }
         else 
-        {
-            std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
-            std::string fileName = converter.to_bytes(fullPath);
-            std::wstring uniqueFileName = GetUniqueFileName(converter.from_bytes(fileName), fileNames); 
-            filesPath.push_back(uniqueFileName);
-
-            LONGLONG fileSize = GetMyFileSize(findFileData);
-            std::wstring sizeStr = std::to_wstring(fileSize); 
-            filesSizes.push_back(sizeStr);
-
+        {        
+            std::wstring uniqueFileName = GetUniqueFileName(fullPath, fileNames);
+            filesPath.push_back(uniqueFileName);  
+            filesSizes.push_back(std::to_wstring(GetMyFileSize(findFileData)));
         }
     } while (FindNextFileW(hFind, &findFileData) != 0);
     if (GetLastError() != ERROR_NO_MORE_FILES) 
@@ -422,43 +427,41 @@ void PrintResults(std::vector<std::wstring>& filesPath, std::vector<std::wstring
     if (filesPath.size() != filesSizes.size() || sortedFilesPath.size() != sortedFilesSizes.size())
         return;
     SendMessage(hwndListView, WM_SETREDRAW, FALSE, 0);
-
+    LVITEM lvItem;
+    ZeroMemory(&lvItem, sizeof(LVITEM));
+    lvItem.mask = LVIF_TEXT;
+    std::wstring index;
     for (int i = 0; i < filesPath.size(); ++i)
     {
-        LVITEM lvItem;
-        ZeroMemory(&lvItem, sizeof(LVITEM));
-
-        lvItem.mask = LVIF_TEXT;
+        index = std::to_wstring(i + 1);
         lvItem.iItem = i;
         lvItem.iSubItem = 0;
-
-        std::wstring index = std::to_wstring(i + 1);
+        lvItem.pszText = (LPWSTR)index.c_str();  
         ListView_InsertItem(hwndListView, &lvItem);
-
-        ListView_SetItemText(hwndListView, i, 0, (LPWSTR)index.c_str());
-        ListView_SetItemText(hwndListView, i, 1, (LPWSTR)(filesPath[i]).c_str());
-        ListView_SetItemText(hwndListView, i, 2, (LPWSTR)(filesSizes[i]).c_str());
-        ListView_SetItemText(hwndListView, i, 3, (LPWSTR)(index.c_str()));
-        ListView_SetItemText(hwndListView, i, 4, (LPWSTR)(sortedFilesPath[i]).c_str());
-        ListView_SetItemText(hwndListView, i, 5, (LPWSTR)(sortedFilesSizes[i]).c_str());
+        ListView_SetItemText(hwndListView, i, 1, (LPWSTR)filesPath[i].c_str());
+        ListView_SetItemText(hwndListView, i, 2, (LPWSTR)filesSizes[i].c_str());
+        ListView_SetItemText(hwndListView, i, 3, (LPWSTR)index.c_str());
+        ListView_SetItemText(hwndListView, i, 4, (LPWSTR)sortedFilesPath[i].c_str());
+        ListView_SetItemText(hwndListView, i, 5, (LPWSTR)sortedFilesSizes[i].c_str());
     }
     SendMessage(hwndListView, WM_SETREDRAW, TRUE, 0);
     RedrawWindow(hwndListView, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW);
 }
 
+
 void StartScanning(HWND hwndParent) 
 {
     wchar_t* directory = OnButtonClick(hwndParent);  
-    std::unordered_set<std::wstring> fileNames; 
+    std::unordered_map<std::wstring, int> nameCount;
     std::vector<std::wstring> filesPath;
     std::vector<std::wstring> filesSizes;
     int countOfErrors = 0;
-    ScanNext(directory, fileNames, filesPath, filesSizes, countOfErrors);
-    std::cout << "Number of failure readings: " << countOfErrors << "\n";
+    ScanNext(directory, nameCount, filesPath, filesSizes, countOfErrors);
     std::vector<std::wstring> sortedFilesPath = filesPath;
     std::vector<std::wstring> sortedFilesSizes = filesSizes;
     StartSorting(sortedFilesPath, sortedFilesSizes);
     PrintResults(filesPath, filesSizes, sortedFilesPath, sortedFilesSizes, hwndParent);
+    FlushErrors(countOfErrors);
 }
 
 HWND CreateAppWindow(HINSTANCE hInstance, int nCmdShow)
