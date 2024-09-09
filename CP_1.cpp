@@ -7,6 +7,8 @@
 #include <unordered_set>
 #include <filesystem>
 #include <unordered_map>
+#include <fstream>
+#include <iostream>
 
 #pragma comment(lib, "Comctl32.lib")
 
@@ -70,38 +72,6 @@ HWND CreateStartBtn(HWND hwndParent)
     );
     return hwndButton;
 }
-
-//HWND AllocateHeaderTableMemory(HWND hwndListView, const int WINDOW_WIDTH)
-//{
-//    for (int i = 0; i < 2; ++i)
-//    {
-//        LVCOLUMN lvc;
-//        ZeroMemory(&lvc, sizeof(LVCOLUMN));
-//        lvc.mask = LVCF_TEXT | LVCF_WIDTH;
-//        lvc.cx = WINDOW_WIDTH / 2;      
-//        ListView_InsertColumn(hwndListView, i, &lvc);  
-//    }
-//
-//    std::vector<std::vector<std::wstring>> rows = {
-//        { L"C:\\*", L"Result" }
-//    };
-//
-//    for (int i = 0; i < rows.size(); ++i)
-//    {
-//        LVITEM lvItem;
-//        ZeroMemory(&lvItem, sizeof(LVITEM));
-//
-//        lvItem.mask = LVIF_TEXT;
-//        lvItem.iItem = i; 
-//        lvItem.iSubItem = 0; 
-//
-//        lvItem.pszText = const_cast<LPWSTR>(rows[i][0].c_str());
-//        ListView_InsertItem(hwndListView, &lvItem);
-//
-//        ListView_SetItemText(hwndListView, i, 1, const_cast<LPWSTR>(rows[i][1].c_str()));
-//    }
-//    return hwndListView;
-//}
 
 HWND AllocateDirectoriesTableMemory(HWND hwndListView, const int WINDOW_WIDTH)
 {
@@ -282,13 +252,25 @@ void LogError(const std::wstring& filePath, int& countOfErrors)
     countOfErrors++;
 }
 
-void FlushErrors(int& countOfErrors)
+void FlushErrors(int& countOfErrors, wchar_t* directory)
 {
-    for (const auto& error : errorBuffer) {
-        std::wcerr << L"Failed to access file: " << error.filePath
+    std::wstring searchPath = L"C:\\Downloads";
+    searchPath += L"\\ErrorLogs";
+    if (!CreateDirectoryW(searchPath.c_str(), NULL))
+        return;
+    
+    std::wofstream errorLogFile(searchPath + L"\\ErrorLogs.txt", std::ios::out
+        | std::ios::trunc);
+    if (!errorLogFile.is_open()) 
+        return;
+    for (const auto& error : errorBuffer) 
+    {
+        errorLogFile << L"Failed to access file: " << error.filePath
             << L" Error code: " << error.errorCode << std::endl;
     }
-    std::cout << "Number of failure readings: " << countOfErrors << "\n";
+    errorLogFile << L"Number of failure readings: " << countOfErrors 
+        << std::endl;
+    errorLogFile.close();
 }
 
 
@@ -332,9 +314,7 @@ void ScanNext(const wchar_t* directory, std::unordered_map<std::wstring, int>& f
         }
     } while (FindNextFileW(hFind, &findFileData) != 0);
     if (GetLastError() != ERROR_NO_MORE_FILES) 
-    {
         LogError(searchPath, countOfErrors);
-    }
     FindClose(hFind);
 }
 
@@ -343,7 +323,8 @@ struct FileInfo {
     LONGLONG fileSize;
 };
 
-void Merge(std::vector<std::wstring>& files, std::vector<std::wstring>& sizes, int left, int mid, int right) 
+void Merge(std::vector<std::wstring>& files, std::vector<std::wstring>& sizes, 
+    int left, int mid, int right) 
 {
     int n1 = mid - left + 1;
     int n2 = right - mid;
@@ -396,7 +377,8 @@ void Merge(std::vector<std::wstring>& files, std::vector<std::wstring>& sizes, i
     }
 }
 
-void MergeSort(std::vector<std::wstring>& files, std::vector<std::wstring>& sizes, int left, int right) 
+void MergeSort(std::vector<std::wstring>& files, 
+    std::vector<std::wstring>& sizes, int left, int right) 
 {
     if (left < right)
     {
@@ -411,11 +393,6 @@ void StartSorting(std::vector<std::wstring>& filesPath,
     std::vector<std::wstring>& filesSizes)
 {
     MergeSort(filesPath, filesSizes, 0, filesSizes.size() - 1);
-}
-
-std::wstring ToWString(const std::string& str)
-{
-    return std::wstring(str.begin(), str.end());
 }
 
 void PrintResults(std::vector<std::wstring>& filesPath, std::vector<std::wstring>& filesSizes,
@@ -461,7 +438,7 @@ void StartScanning(HWND hwndParent)
     std::vector<std::wstring> sortedFilesSizes = filesSizes;
     StartSorting(sortedFilesPath, sortedFilesSizes);
     PrintResults(filesPath, filesSizes, sortedFilesPath, sortedFilesSizes, hwndParent);
-    FlushErrors(countOfErrors);
+    FlushErrors(countOfErrors, directory);
 }
 
 HWND CreateAppWindow(HINSTANCE hInstance, int nCmdShow)
@@ -525,18 +502,9 @@ LRESULT CALLBACK WndProc(HWND hwnd/*дескриптор окна*/, UINT uMsg/*
     return 0;
 }
 
-void CreateConsole() {
-    AllocConsole();  
-    FILE* pCout;  
-    freopen_s(&pCout, "CONOUT$", "w", stdout);  
-    FILE* pCerr;  
-    freopen_s(&pCerr, "CONOUT$", "w", stderr);  
-}
-
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
     int nCmdShow)
 {
-    CreateConsole();
     if (!RegisterWindowClass(hInstance))
     {
         MessageBoxW(NULL, L"Failed to register window class", L"Error", MB_OK | MB_ICONERROR);
